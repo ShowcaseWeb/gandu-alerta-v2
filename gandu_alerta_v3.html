@@ -1,0 +1,553 @@
+﻿<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gandu Alerta · Plataforma de Risco Climático</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e1a; --bg2: #131825; --card: #1a2033; --border: #2a3349;
+    --text: #e8edf5; --muted: #8892a6; --accent: #38bdf8; --accent2: #06b6d4;
+    --danger: #ef4444; --warn: #f59e0b; --ok: #22c55e;
+    --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+  body { background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+  #app { display: flex; height: 100vh; }
+
+  /* SIDEBAR */
+  .sidebar { width: 240px; background: var(--bg2); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 20px 0; }
+  .logo { padding: 0 20px 20px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .logo h1 { font-size: 18px; font-weight: 800; background: var(--gradient);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .logo p { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; }
+  .nav { display: flex; flex-direction: column; gap: 2px; padding: 0 12px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+    color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; }
+  .nav-item:hover { background: #1f2638; color: var(--text); }
+  .nav-item.active { background: linear-gradient(90deg, #1e3a5f, #1e293b); color: var(--accent); border-left: 2px solid var(--accent); }
+  .nav-item .ico { font-size: 16px; width: 20px; }
+  .sidebar-footer { margin-top: auto; padding: 16px 20px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+  .sidebar-footer .badge { display: inline-block; background: var(--danger); color: #fff; padding: 2px 8px;
+    border-radius: 10px; font-size: 10px; font-weight: 700; margin-top: 4px; }
+
+  /* MAIN */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { height: 60px; background: var(--bg2); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
+  .topbar h2 { font-size: 16px; font-weight: 700; }
+  .topbar .actions { display: flex; gap: 10px; }
+  .btn-sm { padding: 8px 14px; border-radius: 8px; border: none; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all .15s; }
+  .btn-sm.primary { background: var(--accent); color: #0a0e1a; }
+  .btn-sm.primary:hover { background: var(--accent2); }
+  .btn-sm.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-sm.ghost:hover { background: var(--card); }
+  .btn-sm.danger { background: var(--danger); color: #fff; }
+
+  .content { flex: 1; overflow-y: auto; padding: 24px; }
+  .view { display: none; }
+  .view.active { display: block; animation: fadeIn .3s; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* CARDS */
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; position: relative; overflow: hidden; }
+  .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--gradient); }
+  .stat-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .stat-card .value { font-size: 32px; font-weight: 800; margin: 8px 0 4px; }
+  .stat-card .delta { font-size: 12px; color: var(--muted); }
+  .stat-card.danger .value { color: var(--danger); }
+  .stat-card.warn .value { color: var(--warn); }
+  .stat-card.ok .value { color: var(--ok); }
+  .stat-card.accent .value { color: var(--accent); }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .card h3 { font-size: 14px; font-weight: 700; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+  .card h3 .tag { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: #1e3a5f; color: var(--accent); }
+
+  /* MAPA */
+  .mapa-container { height: calc(100vh - 160px); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); position: relative; }
+  #mapa { height: 100%; width: 100%; }
+  .map-overlay { position: absolute; top: 16px; left: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+  .map-chip { background: rgba(15,23,42,.92); backdrop-filter: blur(10px); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--text); }
+  .map-chip .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+  /* FORMULÁRIO */
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-size: 14px; font-family: inherit; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* TABELA */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--muted);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+  td { padding: 12px; border-bottom: 1px solid var(--border); }
+  tr:hover td { background: #1f2638; }
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .badge.alto { background: #7f1d1d; color: #fecaca; }
+  .badge.medio { background: #78350f; color: #fde68a; }
+  .badge.baixo { background: #14532d; color: #bbf7d0; }
+
+  /* RELATÓRIO */
+  .relatorio { background: #fff; color: #1a1a1a; padding: 40px; border-radius: 12px; line-height: 1.7; }
+  .relatorio h1 { font-size: 24px; margin-bottom: 8px; }
+  .relatorio h2 { font-size: 16px; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #1a1a1a; }
+  .relatorio p { margin-bottom: 10px; }
+  .relatorio table { margin: 12px 0; }
+  .relatorio th { background: #f0f0f0; color: #1a1a1a; }
+  .relatorio td, .relatorio th { border: 1px solid #ddd; }
+  .relatorio .capa { text-align: center; padding: 40px 0; border-bottom: 3px solid #1a1a1a; margin-bottom: 30px; }
+  .relatorio .capa h1 { font-size: 28px; }
+  .relatorio .capa .ods { display: inline-block; background: #dc2626; color: #fff; padding: 6px 16px;
+    border-radius: 20px; font-size: 12px; font-weight: 700; margin-top: 12px; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty .ic { font-size: 48px; opacity: .3; display: block; margin-bottom: 16px; }
+  .empty p { font-size: 14px; }
+
+  /* POPUP */
+  .leaflet-popup-content-wrapper { background: var(--card) !important; color: var(--text) !important;
+    border-radius: 10px !important; border: 1px solid var(--border); }
+  .leaflet-popup-tip { background: var(--card) !important; }
+  .leaflet-popup-content { margin: 14px 18px !important; font-size: 13px !important; line-height: 1.5; }
+  .popup-title { font-weight: 700; color: var(--accent); margin-bottom: 6px; font-size: 14px; }
+  .popup-dica { color: var(--warn); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+
+  /* CUSTOM SCROLLBAR */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4560; }
+
+  /* MODO APRESENTAÇÃO */
+  body.apresentacao .sidebar { display: none; }
+  body.apresentacao .topbar { display: none; }
+  body.apresentacao .main { height: 100vh; }
+  body.apresentacao .content { padding: 0; height: 100vh; }
+  body.apresentacao .mapa-container { height: 100vh; border-radius: 0; border: none; }
+  body.apresentacao .map-overlay { top: 24px; left: 24px; }
+  .btn-apresentacao { position: fixed; top: 20px; right: 20px; z-index: 10000;
+    background: var(--danger); color: #fff; border: none; padding: 10px 16px; border-radius: 8px;
+    font-weight: 700; cursor: pointer; display: none; }
+  body.apresentacao .btn-apresentacao { display: block; }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--ok); color: #fff;
+    padding: 12px 20px; border-radius: 8px; font-weight: 600; z-index: 99999;
+    transform: translateY(100px); transition: transform .3s; }
+  .toast.show { transform: translateY(0); }
+</style>
+</head>
+<body>
+<button class="btn-apresentacao" onclick="sairApresentacao()">✕ Sair da Apresentação</button>
+<div id="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <h1>🌊 Gandu Alerta</h1>
+      <p>Plataforma de Risco Climático</p>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" data-view="dashboard" onclick="mudarView('dashboard', this)">
+        <span class="ico">📊</span> Dashboard
+      </div>
+      <div class="nav-item" data-view="mapa" onclick="mudarView('mapa', this)">
+        <span class="ico">🗺️</span> Mapa de Risco
+      </div>
+      <div class="nav-item" data-view="pontos" onclick="mudarView('pontos', this)">
+        <span class="ico">📍</span> Pontos Mapeados
+      </div>
+      <div class="nav-item" data-view="cadastro" onclick="mudarView('cadastro', this)">
+        <span class="ico">➕</span> Cadastrar Ponto
+      </div>
+      <div class="nav-item" data-view="relatorio" onclick="mudarView('relatorio', this)">
+        <span class="ico">📄</span> Relatório
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div>ODS 13 · Agenda 2030</div>
+      <span class="badge">EXTENSÃO</span>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <h2 id="tituloView">Dashboard</h2>
+      <div class="actions">
+        <button class="btn-sm ghost" onclick="entrarApresentacao()">🎬 Apresentação</button>
+        <button class="btn-sm primary" onclick="mudarView('cadastro')">+ Novo Ponto</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- VIEW DASHBOARD -->
+      <div class="view active" id="view-dashboard">
+        <div class="grid-4">
+          <div class="stat-card danger">
+            <div class="label">Pontos de risco</div>
+            <div class="value" id="statTotal">0</div>
+            <div class="delta">mapeados pela comunidade</div>
+          </div>
+          <div class="stat-card warn">
+            <div class="label">Risco alto</div>
+            <div class="value" id="statAlto">0</div>
+            <div class="delta">prioridade de ação</div>
+          </div>
+          <div class="stat-card accent">
+            <div class="label">Pessoas impactadas</div>
+            <div class="value" id="statPessoas">0</div>
+            <div class="delta">estimativa comunitária</div>
+          </div>
+          <div class="stat-card ok">
+            <div class="label">Cobertura</div>
+            <div class="value" id="statBairros">0</div>
+            <div class="delta">bairros mapeados</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Distribuição por nível de risco <span class="tag">TEMPO REAL</span></h3>
+            <canvas id="chartRisco" height="200"></canvas>
+          </div>
+          <div class="card">
+            <h3>Pontos por bairro</h3>
+            <canvas id="chartBairro" height="200"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Últimos pontos cadastrados <span class="tag">COMUNIDADE</span></h3>
+          <table id="tabelaRecentes">
+            <thead><tr><th>Local</th><th>Bairro</th><th>Risco</th><th>Data</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- VIEW MAPA -->
+      <div class="view" id="view-mapa">
+        <div class="mapa-container">
+          <div id="mapa"></div>
+          <div class="map-overlay">
+            <div class="map-chip"><span class="dot" style="background:#ef4444;"></span>Risco alto</div>
+            <div class="map-chip"><span class="dot" style="background:#f59e0b;"></span>Risco médio</div>
+            <div class="map-chip"><span class="dot" style="background:#22c55e;"></span>Risco baixo</div>
+            <div class="map-chip" id="chipModo"><span class="dot" style="background:#38bdf8;"></span>Modo coordenador</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW PONTOS -->
+      <div class="view" id="view-pontos">
+        <div class="card">
+          <h3>Todos os pontos mapeados <span class="tag" id="contadorPontos">0</span></h3>
+          <table id="tabelaPontos">
+            <thead><tr><th>#</th><th>Local</th><th>Bairro</th><th>Risco</th><th>Motivo</th><th>Data</th><th>Ações</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- VIEW CADASTRO -->
+      <div class="view" id="view-cadastro">
+        <div class="card" style="max-width:720px;">
+          <h3>Cadastrar novo ponto de risco</h3>
+          <form id="formPonto" onsubmit="salvarPonto(event)">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Nome do local *</label>
+                <input type="text" id="fNome" required placeholder="Ex: Rua da Ladeira">
+              </div>
+              <div class="form-group">
+                <label>Bairro *</label>
+                <input type="text" id="fBairro" required placeholder="Ex: Centro">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Nível de risco *</label>
+              <select id="fRisco" required>
+                <option value="alto">Alto — risco de vida</option>
+                <option value="medio">Médio — transtornos frequentes</option>
+                <option value="baixo">Baixo — raramente alaga</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Por que alaga aqui? *</label>
+              <textarea id="fMotivo" required placeholder="Descreva o motivo: declive, lixo nos bueiros, rio próximo..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>O que fazer? (dica para a comunidade)</label>
+              <textarea id="fDica" placeholder="Ex: Não desça esta rua durante chuva forte."></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Latitude</label>
+                <input type="number" step="any" id="fLat" value="-13.7450">
+              </div>
+              <div class="form-group">
+                <label>Longitude</label>
+                <input type="number" step="any" id="fLng" value="-39.4850">
+              </div>
+            </div>
+            <button type="submit" class="btn-sm primary" style="width:100%; padding:12px;">✓ Salvar ponto</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- VIEW RELATÓRIO -->
+      <div class="view" id="view-relatorio">
+        <div style="margin-bottom:16px;">
+          <button class="btn-sm primary" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+        </div>
+        <div class="relatorio" id="relatorioContent"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">✓ Ponto salvo com sucesso!</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ===== ESTADO =====
+let pontos = JSON.parse(localStorage.getItem('gandu_pontos') || 'null') || [
+  { id:1, nome:"Rua da Ladeira", bairro:"Centro", risco:"alto", lat:-13.7442, lng:-39.4853,
+    motivo:"Rua em declive acentuado, sem bueiros. A água desce e acumula na esquina.",
+    dica:"Não desça esta rua durante chuva forte. Use a Rua do Meio.", data:"2024-11-15" },
+  { id:2, nome:"Ponte do Rio Gandu", bairro:"Centro", risco:"alto", lat:-13.7461, lng:-39.4821,
+    motivo:"Rio sobe rápido e transborda. Lixo no vão da ponte agrava.",
+    dica:"Evite atravessar após 30 min de chuva forte.", data:"2024-11-15" },
+  { id:3, nome:"Praça Central", bairro:"Centro", risco:"medio", lat:-13.7418, lng:-39.4879,
+    motivo:"Calçamento impermeável sem área verde. Água escoa para a rua de baixo.",
+    dica:"Não estacione na praça em dias de chuva.", data:"2024-11-20" },
+  { id:4, nome:"Bairro Alto", bairro:"Bairro Alto", risco:"alto", lat:-13.7495, lng:-39.4830,
+    motivo:"Ocupação em encosta. Risco de deslizamento além de alagamento.",
+    dica:"Observe rachaduras no muro. Ligue 199 se aparecerem.", data:"2024-11-22" },
+  { id:5, nome:"Mercado Municipal", bairro:"Centro", risco:"medio", lat:-13.7450, lng:-39.4890,
+    motivo:"Lixo e entulho nos bueiros. A água não escoa.",
+    dica:"Não jogue lixo na rua. Bueiro entupido faz a água voltar.", data:"2024-11-25" },
+  { id:6, nome:"Rua do Comércio", bairro:"Comércio", risco:"baixo", lat:-13.7430, lng:-39.4810,
+    motivo:"Rua plana com boa drenagem, mas calhas entopem no outono.",
+    dica:"Limpe as calhas antes do período chuvoso.", data:"2024-12-01" }
+];
+
+function salvarLocal() {
+  localStorage.setItem('gandu_pontos', JSON.stringify(pontos));
+}
+
+// ===== NAVEGAÇÃO =====
+const titulos = { dashboard:"Dashboard", mapa:"Mapa de Risco", pontos:"Pontos Mapeados", cadastro:"Cadastrar Ponto", relatorio:"Relatório Final" };
+function mudarView(view, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navEl = el || document.querySelector(`.nav-item[data-view="${view}"]`);
+  if (navEl) navEl.classList.add('active');
+  document.getElementById('tituloView').textContent = titulos[view];
+  if (view === 'mapa') setTimeout(() => map.invalidateSize(), 100);
+  if (view === 'relatorio') gerarRelatorio();
+  if (view === 'dashboard') atualizarDashboard();
+  if (view === 'pontos') renderTabelaPontos();
+}
+
+// ===== MAPA =====
+let map, marcadores = [];
+function initMapa() {
+  map = L.map('mapa', { zoomControl: false }).setView([-13.7450, -39.4850], 15);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO', maxZoom: 19
+  }).addTo(map);
+  desenharPontos();
+}
+function desenharPontos() {
+  marcadores.forEach(m => map.removeLayer(m));
+  marcadores = [];
+  const cores = { alto:'#ef4444', medio:'#f59e0b', baixo:'#22c55e' };
+  pontos.forEach(p => {
+    const icone = L.divIcon({
+      className: '', html: `<div style="width:24px;height:24px;background:${cores[p.risco]};
+        border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px ${cores[p.risco]}55,0 2px 8px rgba(0,0,0,.7);
+        animation:pulse 2s infinite;"></div>`, iconSize:[24,24], iconAnchor:[12,12]
+    });
+    const m = L.marker([p.lat, p.lng], { icon: icone }).addTo(map);
+    m.bindPopup(`<div class="popup-title">${p.nome}</div><small style="color:#8892a6;">${p.bairro}</small><br>${p.motivo}
+      ${p.dica ? `<div class="popup-dica">💡 ${p.dica}</div>` : ''}`);
+    marcadores.push(m);
+  });
+}
+const pulseStyle = document.createElement('style');
+pulseStyle.textContent = '@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}';
+document.head.appendChild(pulseStyle);
+
+// ===== DASHBOARD =====
+let chartRiscoInst, chartBairroInst;
+function atualizarDashboard() {
+  document.getElementById('statTotal').textContent = pontos.length;
+  document.getElementById('statAlto').textContent = pontos.filter(p => p.risco === 'alto').length;
+  document.getElementById('statPessoas').textContent = (pontos.length * 47).toLocaleString('pt-BR');
+  document.getElementById('statBairros').textContent = new Set(pontos.map(p => p.bairro)).size;
+
+  const altos = pontos.filter(p => p.risco === 'alto').length;
+  const medios = pontos.filter(p => p.risco === 'medio').length;
+  const baixos = pontos.filter(p => p.risco === 'baixo').length;
+
+  if (chartRiscoInst) chartRiscoInst.destroy();
+  chartRiscoInst = new Chart(document.getElementById('chartRisco'), {
+    type: 'doughnut',
+    data: { labels:['Alto','Médio','Baixo'], datasets:[{ data:[altos,medios,baixos],
+      backgroundColor:['#ef4444','#f59e0b','#22c55e'], borderColor:'#1a2033', borderWidth:3 }] },
+    options: { plugins:{ legend:{ position:'bottom', labels:{ color:'#e8edf5', padding:16, font:{ size:12 } } } },
+      cutout:'65%' }
+  });
+
+  const porBairro = {};
+  pontos.forEach(p => porBairro[p.bairro] = (porBairro[p.bairro] || 0) + 1);
+  if (chartBairroInst) chartBairroInst.destroy();
+  chartBairroInst = new Chart(document.getElementById('chartBairro'), {
+    type: 'bar',
+    data: { labels: Object.keys(porBairro), datasets:[{ data:Object.values(porBairro),
+      backgroundColor:'#38bdf8', borderRadius:6 }] },
+    options: { plugins:{ legend:{ display:false } },
+      scales:{ x:{ ticks:{ color:'#8892a6' }, grid:{ display:false } },
+               y:{ ticks:{ color:'#8892a6', stepSize:1 }, grid:{ color:'#2a3349' } } } }
+  });
+
+  const tbody = document.querySelector('#tabelaRecentes tbody');
+  tbody.innerHTML = pontos.slice(-5).reverse().map(p => `
+    <tr><td><strong>${p.nome}</strong></td><td>${p.bairro}</td>
+    <td><span class="badge ${p.risco}">${p.risco}</span></td><td>${p.data}</td></tr>`).join('');
+}
+
+// ===== TABELA PONTOS =====
+function renderTabelaPontos() {
+  document.getElementById('contadorPontos').textContent = pontos.length;
+  document.querySelector('#tabelaPontos tbody').innerHTML = pontos.map((p, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td><strong>${p.nome}</strong></td>
+      <td>${p.bairro}</td>
+      <td><span class="badge ${p.risco}">${p.risco}</span></td>
+      <td style="max-width:300px; font-size:12px; color:#8892a6;">${p.motivo.substring(0,60)}...</td>
+      <td>${p.data}</td>
+      <td><button class="btn-sm danger" onclick="removerPonto(${p.id})">Remover</button></td>
+    </tr>`).join('');
+}
+
+function removerPonto(id) {
+  if (!confirm('Remover este ponto?')) return;
+  pontos = pontos.filter(p => p.id !== id);
+  salvarLocal(); desenharPontos(); renderTabelaPontos(); atualizarDashboard();
+}
+
+// ===== CADASTRO =====
+function salvarPonto(e) {
+  e.preventDefault();
+  const novo = {
+    id: Date.now(),
+    nome: document.getElementById('fNome').value,
+    bairro: document.getElementById('fBairro').value,
+    risco: document.getElementById('fRisco').value,
+    motivo: document.getElementById('fMotivo').value,
+    dica: document.getElementById('fDica').value,
+    lat: parseFloat(document.getElementById('fLat').value),
+    lng: parseFloat(document.getElementById('fLng').value),
+    data: new Date().toISOString().split('T')[0]
+  };
+  pontos.push(novo);
+  salvarLocal();
+  document.getElementById('formPonto').reset();
+  document.getElementById('fLat').value = -13.7450;
+  document.getElementById('fLng').value = -39.4850;
+  desenharPontos();
+  atualizarDashboard();
+  toast('✓ Ponto salvo com sucesso!');
+  mudarView('pontos');
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ===== RELATÓRIO =====
+function gerarRelatorio() {
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const altos = pontos.filter(p => p.risco === 'alto').length;
+  const medios = pontos.filter(p => p.risco === 'medio').length;
+  const baixos = pontos.filter(p => p.risco === 'baixo').length;
+  const bairros = [...new Set(pontos.map(p => p.bairro))].join(', ');
+
+  document.getElementById('relatorioContent').innerHTML = `
+    <div class="capa">
+      <h1>Gandu Alerta</h1>
+      <p style="font-size:14px; color:#555; margin-top:8px;">Mapa Comunitário de Risco de Enchentes</p>
+      <span class="ods">ODS 13 — Ação Contra a Mudança Global do Clima</span>
+      <p style="margin-top:24px; font-size:12px; color:#777;">Relatório gerado em ${hoje}</p>
+    </div>
+
+    <h2>1. Apresentação</h2>
+    <p>Este relatório apresenta os resultados do mapeamento comunitário de risco de enchentes realizado no município de Gandu-BA, no âmbito do projeto de extensão universitária vinculado ao ODS 13 da Agenda 2030 da ONU.</p>
+
+    <h2>2. Metodologia</h2>
+    <p>O mapeamento foi realizado por meio de oficinas participativas com estudantes da rede pública, que identificaram e cadastraram pontos de alagamento em seus bairros. Os dados foram consolidados nesta plataforma digital.</p>
+
+    <h2>3. Resultados</h2>
+    <table>
+      <tr><th>Indicador</th><th>Valor</th></tr>
+      <tr><td>Total de pontos mapeados</td><td><strong>${pontos.length}</strong></td></tr>
+      <tr><td>Pontos com risco alto</td><td><strong>${altos}</strong></td></tr>
+      <tr><td>Pontos com risco médio</td><td><strong>${medios}</strong></td></tr>
+      <tr><td>Pontos com risco baixo</td><td><strong>${baixos}</strong></td></tr>
+      <tr><td>Bairros cobertos</td><td><strong>${bairros}</strong></td></tr>
+    </table>
+
+    <h2>4. Detalhamento dos pontos</h2>
+    <table>
+      <tr><th>#</th><th>Local</th><th>Bairro</th><th>Risco</th><th>Motivo</th></tr>
+      ${pontos.map((p,i) => `<tr><td>${i+1}</td><td>${p.nome}</td><td>${p.bairro}</td>
+        <td>${p.risco.toUpperCase()}</td><td>${p.motivo}</td></tr>`).join('')}
+    </table>
+
+    <h2>5. Considerações finais</h2>
+    <p>O projeto contribuiu para a Meta 13.3 do ODS 13, ao promover educação climática e conscientização sobre riscos. Os dados aqui apresentados devem ser validados junto à Defesa Civil municipal para uso oficial.</p>
+
+    <p style="margin-top:40px; text-align:center; color:#777; font-size:12px;">
+      Gandu-BA, ${hoje}<br><br>
+      _____________________________________<br>
+      Aluno(a) responsável
+    </p>
+  `;
+}
+
+// ===== APRESENTAÇÃO =====
+function entrarApresentacao() {
+  document.body.classList.add('apresentacao');
+  mudarView('mapa');
+  setTimeout(() => map.invalidateSize(), 100);
+}
+function sairApresentacao() {
+  document.body.classList.remove('apresentacao');
+  setTimeout(() => map.invalidateSize(), 100);
+}
+
+// ===== INIT =====
+initMapa();
+atualizarDashboard();
+</script>
+</body>
+</html>

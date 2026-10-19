@@ -1,0 +1,314 @@
+﻿<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gandu Alerta — Mapa Real de Risco</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: #0f172a; color: #e2e8f0; overflow: hidden; height: 100vh; }
+  #app { display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+
+  header { position: absolute; top: 0; left: 0; right: 380px; z-index: 1000; padding: 14px 20px;
+    background: linear-gradient(180deg, rgba(15,23,42,.95) 0%, rgba(15,23,42,0) 100%); pointer-events: none; }
+  header h1 { font-size: 20px; font-weight: 800; color: #fff; }
+  header h1 span { color: #ef4444; }
+  header p { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+  #mapa { height: 100vh; width: 100%; background: #1e293b; }
+
+  .painel { background: #0f172a; border-left: 1px solid #1e293b; padding: 18px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 14px; }
+
+  .modo-box { background: #1e293b; border-radius: 10px; padding: 14px; border: 1px solid #334155; }
+  .modo-box h3 { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #f1f5f9; }
+  .modo-box p { font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 10px; }
+
+  .btn { padding: 11px 14px; border-radius: 8px; border: none; font-size: 13px; font-weight: 700;
+    cursor: pointer; width: 100%; transition: all .15s; }
+  .btn.primary { background: linear-gradient(135deg, #0ea5e9, #06b6d4); color: #fff; }
+  .btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(14,165,233,.4); }
+  .btn.primary.active { background: linear-gradient(135deg, #dc2626, #b91c1c); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .7; } }
+  .btn.secondary { background: #334155; color: #e2e8f0; }
+  .btn.secondary:hover { background: #475569; }
+  .btn.danger { background: #7f1d1d; color: #fecaca; font-size: 11px; padding: 7px 10px; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: #1e293b; border-radius: 8px; padding: 12px; border: 1px solid #334155; }
+  .stat .num { font-size: 22px; font-weight: 800; color: #38bdf8; line-height: 1; }
+  .stat .lbl { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin-top: 3px; }
+  .stat.alto .num { color: #ef4444; }
+  .stat.medio .num { color: #f59e0b; }
+  .stat.baixo .num { color: #22c55e; }
+
+  .ponto-card { background: #1e293b; border-radius: 10px; padding: 12px; border: 1px solid #334155;
+    border-left: 3px solid #ef4444; margin-bottom: 8px; }
+  .ponto-card .titulo { font-size: 14px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+  .ponto-card .bairro { font-size: 11px; color: #94a3b8; margin-bottom: 6px; }
+  .ponto-card .motivo { font-size: 12px; color: #cbd5e1; line-height: 1.4; }
+  .ponto-card .coords { font-size: 10px; color: #64748b; margin-top: 6px; font-family: monospace; }
+
+  .instrucao { background: #422006; border-left: 3px solid #f59e0b; padding: 10px 12px; border-radius: 6px;
+    font-size: 12px; color: #fbbf24; line-height: 1.5; }
+
+  .vazio { color: #64748b; text-align: center; padding: 30px 10px; font-size: 13px; line-height: 1.6; }
+  .vazio .ic { font-size: 36px; display: block; margin-bottom: 8px; opacity: .4; }
+
+  .leaflet-popup-content-wrapper { background: #1e293b !important; color: #f1f5f9 !important;
+    border-radius: 10px !important; }
+  .leaflet-popup-tip { background: #1e293b !important; }
+  .leaflet-popup-content { margin: 14px 16px !important; font-size: 13px !important; line-height: 1.5; }
+  .popup-title { font-weight: 700; color: #38bdf8; margin-bottom: 4px; }
+
+  body.modo-captura #mapa { cursor: crosshair; }
+  .crosshair-hint { position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+    background: #dc2626; color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 12px;
+    font-weight: 700; z-index: 1000; display: none; animation: pulse 1.5s infinite; }
+  body.modo-captura .crosshair-hint { display: block; }
+
+  @media (max-width: 800px) { #app { grid-template-columns: 1fr; } .painel { display: none; } header { right: 0; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div style="position: relative;">
+    <header>
+      <h1>🌊 Gandu <span>Alerta</span></h1>
+      <p>Mapa Real de Risco de Enchentes · Gandu-BA · ODS 13</p>
+    </header>
+    <div class="crosshair-hint">🎯 Clique no mapa para marcar o ponto de alagamento</div>
+    <div id="mapa"></div>
+  </div>
+
+  <aside class="painel">
+    <div class="modo-box">
+      <h3>🎯 Modo Captura</h3>
+      <p>Ative, clique no mapa real de Gandu onde alaga, e o sistema grava as coordenadas exatas. Use para mapear os pontos reais da cidade.</p>
+      <button class="btn primary" id="btnCaptura" onclick="toggleCaptura()">▶ Ativar Modo Captura</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat alto"><div class="num" id="sAlto">0</div><div class="lbl">Risco alto</div></div>
+      <div class="stat medio"><div class="num" id="sMedio">0</div><div class="lbl">Risco médio</div></div>
+      <div class="stat baixo"><div class="num" id="sBaixo">0</div><div class="lbl">Risco baixo</div></div>
+      <div class="stat"><div class="num" id="sTotal">0</div><div class="lbl">Total</div></div>
+    </div>
+
+    <div>
+      <h3 style="font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:8px;">
+        Pontos mapeados</h3>
+      <div id="listaPontos">
+        <div class="vazio"><span class="ic">📍</span>Nenhum ponto mapeado ainda.</div>
+      </div>
+    </div>
+
+    <div id="formNovo" style="display:none;" class="modo-box">
+      <h3 style="color:#ef4444;">📍 Novo ponto capturado</h3>
+      <div style="font-size:11px; color:#94a3b8; font-family:monospace; margin-bottom:8px;" id="coordsCapturadas"></div>
+      <input type="text" id="fNome" placeholder="Nome do local *" style="width:100%; padding:8px; margin-bottom:6px;
+        background:#0f172a; border:1px solid #334155; border-radius:6px; color:#fff; font-size:13px;">
+      <input type="text" id="fBairro" placeholder="Bairro *" style="width:100%; padding:8px; margin-bottom:6px;
+        background:#0f172a; border:1px solid #334155; border-radius:6px; color:#fff; font-size:13px;">
+      <select id="fRisco" style="width:100%; padding:8px; margin-bottom:6px;
+        background:#0f172a; border:1px solid #334155; border-radius:6px; color:#fff; font-size:13px;">
+        <option value="alto">🔴 Risco alto</option>
+        <option value="medio">🟡 Risco médio</option>
+        <option value="baixo">🟢 Risco baixo</option>
+      </select>
+      <textarea id="fMotivo" placeholder="Por que alaga aqui? *" style="width:100%; padding:8px; margin-bottom:8px;
+        background:#0f172a; border:1px solid #334155; border-radius:6px; color:#fff; font-size:13px;
+        min-height:60px; resize:vertical;"></textarea>
+      <div style="display:flex; gap:6px;">
+        <button class="btn primary" onclick="salvarNovoPonto()" style="flex:1;">✓ Salvar</button>
+        <button class="btn secondary" onclick="cancelarNovo()" style="flex:1;">✕ Cancelar</button>
+      </div>
+    </div>
+
+    <div class="instrucao">
+      💡 <strong>Como usar:</strong><br>
+      1. Ative o Modo Captura<br>
+      2. Navegue pelo mapa real de Gandu (use zoom)<br>
+      3. Clique onde alaga<br>
+      4. Nomeie e salve<br>
+      5. Os dados ficam salvos no navegador
+    </div>
+  </aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ===== CENTRO REAL DE GANDU-BA =====
+const CENTRO_GANDU = [-13.7439, -39.4867];
+const ZOOM_INICIAL = 15;
+
+// ===== PONTOS INICIAIS (baseados em relatos reais de alagamento em Gandu) =====
+// Coordenadas aproximadas — ajuste clicando no mapa no modo captura
+const pontosIniciais = [
+  { id:1, lat:-13.7425, lng:-39.4880, nome:"Rua da Ladeira", bairro:"Centro", risco:"alto",
+    motivo:"Rua em declive, sem bueiros. A água desce e acumula na esquina." },
+  { id:2, lat:-13.7460, lng:-39.4845, nome:"Ponte sobre o Rio Gandu", bairro:"Centro", risco:"alto",
+    motivo:"Rio transborda com chuva forte. Lixo no vão da ponte agrava o represamento." },
+  { id:3, lat:-13.7415, lng:-39.4895, nome:"Praça Central", bairro:"Centro", risco:"medio",
+    motivo:"Calçamento impermeável, sem área verde. Água escoa para rua de baixo." },
+  { id:4, lat:-13.7490, lng:-39.4820, nome:"Bairro Alto — encosta", bairro:"Bairro Alto", risco:"alto",
+    motivo:"Ocupação em encosta. Risco de deslizamento além de alagamento." },
+  { id:5, lat:-13.7445, lng:-39.4905, nome:"Mercado Municipal", bairro:"Centro", risco:"medio",
+    motivo:"Lixo e entulho nos bueiros. Água não escoa e volta para dentro das casas." },
+  { id:6, lat:-13.7475, lng:-39.4795, nome:"Estrada do Rio", bairro:"Rio Gandu", risco:"alto",
+    motivo:"Área ribeirinha. Rio sobe rápido e atinge as casas próximas." }
+];
+
+// ===== ESTADO =====
+let pontos = JSON.parse(localStorage.getItem('gandu_map_v4') || 'null') || pontosIniciais;
+let modoCaptura = false;
+let capturaCoords = null;
+let marcadores = [];
+
+function salvar() { localStorage.setItem('gandu_map_v4', JSON.stringify(pontos)); }
+
+// ===== MAPA =====
+const map = L.map('mapa', { zoomControl: false }).setView(CENTRO_GANDU, ZOOM_INICIAL);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// Satélite + ruas híbrido (mostra o relevo real de Gandu)
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: '© Esri, Maxar', maxZoom: 19
+}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19, opacity: .9
+}).addTo(map);
+
+// ===== MARCADORES =====
+const cores = { alto:'#ef4444', medio:'#f59e0b', baixo:'#22c55e' };
+
+function desenhar() {
+  marcadores.forEach(m => map.removeLayer(m));
+  marcadores = [];
+  pontos.forEach(p => {
+    const icone = L.divIcon({
+      className: '', html: `<div style="width:26px;height:26px;background:${cores[p.risco]};
+        border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px ${cores[p.risco]}55,0 3px 10px rgba(0,0,0,.7);
+        display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px;
+        animation:pulse 2s infinite;">${p.risco === 'alto' ? '!' : ''}</div>`,
+      iconSize:[26,26], iconAnchor:[13,13]
+    });
+    const m = L.marker([p.lat, p.lng], { icon: icone }).addTo(map);
+    m.bindPopup(`<div class="popup-title">${p.nome}</div>
+      <div style="color:#94a3b8;font-size:11px;margin-bottom:6px;">${p.bairro}</div>
+      ${p.motivo}
+      <div style="color:#64748b;font-size:10px;font-family:monospace;margin-top:8px;padding-top:6px;
+        border-top:1px solid #334155;">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div>`);
+    marcadores.push(m);
+  });
+  atualizarLista();
+  atualizarStats();
+}
+
+// ===== STATS =====
+function atualizarStats() {
+  document.getElementById('sAlto').textContent = pontos.filter(p => p.risco === 'alto').length;
+  document.getElementById('sMedio').textContent = pontos.filter(p => p.risco === 'medio').length;
+  document.getElementById('sBaixo').textContent = pontos.filter(p => p.risco === 'baixo').length;
+  document.getElementById('sTotal').textContent = pontos.length;
+}
+
+// ===== LISTA =====
+function atualizarLista() {
+  const lista = document.getElementById('listaPontos');
+  if (pontos.length === 0) {
+    lista.innerHTML = '<div class="vazio"><span class="ic">📍</span>Nenhum ponto mapeado ainda.</div>';
+    return;
+  }
+  lista.innerHTML = pontos.slice().reverse().map(p => `
+    <div class="ponto-card" style="border-left-color:${cores[p.risco]};">
+      <div class="titulo">${p.nome}</div>
+      <div class="bairro">${p.bairro}</div>
+      <div class="motivo">${p.motivo}</div>
+      <div class="coords">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <button class="btn danger" onclick="remover(${p.id})" style="flex:1;">🗑️ Remover</button>
+        <button class="btn secondary" onclick="centralizar(${p.lat},${p.lng})" style="flex:1;">🔍 Ver</button>
+      </div>
+    </div>`).join('');
+}
+
+function remover(id) {
+  if (!confirm('Remover este ponto?')) return;
+  pontos = pontos.filter(p => p.id !== id);
+  salvar(); desenhar();
+}
+
+function centralizar(lat, lng) {
+  map.setView([lat, lng], 17);
+}
+
+// ===== MODO CAPTURA =====
+function toggleCaptura() {
+  modoCaptura = !modoCaptura;
+  document.body.classList.toggle('modo-captura', modoCaptura);
+  const btn = document.getElementById('btnCaptura');
+  if (modoCaptura) {
+    btn.textContent = '⏹ Desativar Modo Captura';
+    btn.classList.add('active');
+    map.on('click', capturarClique);
+  } else {
+    btn.textContent = '▶ Ativar Modo Captura';
+    btn.classList.remove('active');
+    map.off('click', capturarClique);
+    cancelarNovo();
+  }
+}
+
+function capturarClique(e) {
+  capturaCoords = e.latlng;
+  document.getElementById('coordsCapturadas').textContent =
+    `📌 ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
+  document.getElementById('formNovo').style.display = 'block';
+  document.getElementById('fNome').value = '';
+  document.getElementById('fBairro').value = '';
+  document.getElementById('fMotivo').value = '';
+  document.getElementById('fNome').focus();
+
+  // Marcador temporário
+  if (window.tempMarker) map.removeLayer(window.tempMarker);
+  window.tempMarker = L.circleMarker(e.latlng, {
+    radius: 12, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: .3, weight: 2
+  }).addTo(map);
+}
+
+function cancelarNovo() {
+  document.getElementById('formNovo').style.display = 'none';
+  if (window.tempMarker) { map.removeLayer(window.tempMarker); window.tempMarker = null; }
+  capturaCoords = null;
+}
+
+function salvarNovoPonto() {
+  const nome = document.getElementById('fNome').value.trim();
+  const bairro = document.getElementById('fBairro').value.trim();
+  const risco = document.getElementById('fRisco').value;
+  const motivo = document.getElementById('fMotivo').value.trim();
+  if (!nome || !bairro || !motivo) {
+    alert('Preencha nome, bairro e motivo do alagamento.');
+    return;
+  }
+  const novo = {
+    id: Date.now(), lat: capturaCoords.lat, lng: capturaCoords.lng,
+    nome, bairro, risco, motivo
+  };
+  pontos.push(novo);
+  salvar();
+  cancelarNovo();
+  desenhar();
+  toggleCaptura(); // desativa após salvar
+}
+
+// ===== INIT =====
+desenhar();
+
+// Ajuste ao redimensionar
+window.addEventListener('resize', () => setTimeout(() => map.invalidateSize(), 100));
+</script>
+</body>
+</html>

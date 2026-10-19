@@ -1,0 +1,270 @@
+﻿<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gandu Alerta — Mapa Comunitário de Risco de Enchentes</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { background: #0f172a; color: #e2e8f0; overflow: hidden; height: 100vh; }
+  #app { display: grid; grid-template-columns: 1fr 400px; height: 100vh; }
+
+  /* HEADER flutuante */
+  header { position: absolute; top: 0; left: 0; right: 400px; z-index: 1000; padding: 16px 24px;
+    background: linear-gradient(180deg, rgba(15,23,42,.95) 0%, rgba(15,23,42,0) 100%); pointer-events: none; }
+  header h1 { font-size: 26px; font-weight: 800; letter-spacing: -.5px;
+    background: linear-gradient(90deg, #38bdf8, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header p { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+  .badge-ods { display: inline-block; background: #dc2626; color: #fff; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; margin-left: 8px; vertical-align: middle; }
+
+  /* MAPA */
+  #mapa { height: 100vh; width: 100%; background: #1e293b; }
+  .leaflet-container { background: #1e293b !important; }
+
+  /* PAINEL LATERAL */
+  .painel { background: #0f172a; border-left: 1px solid #1e293b; padding: 24px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 20px; }
+  .painel h2 { font-size: 18px; font-weight: 700; color: #f1f5f9; }
+  .painel h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 8px; }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stat { background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; }
+  .stat .num { font-size: 28px; font-weight: 800; color: #38bdf8; line-height: 1; }
+  .stat .lbl { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
+  .stat.risk .num { color: #ef4444; }
+  .stat.safe .num { color: #22c55e; }
+
+  .card { background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; }
+  .card .local { font-size: 16px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px; }
+  .card .motivo { font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 12px; }
+  .card .dica { background: #422006; border-left: 3px solid #f59e0b; padding: 10px 12px; border-radius: 6px;
+    font-size: 13px; color: #fbbf24; line-height: 1.4; margin-bottom: 12px; }
+  .card .dica strong { color: #f59e0b; }
+  .card .risco { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .risco.alto { background: #7f1d1d; color: #fecaca; }
+  .risco.medio { background: #78350f; color: #fde68a; }
+  .risco.baixo { background: #14532d; color: #bbf7d0; }
+
+  .btn { background: linear-gradient(135deg, #0ea5e9, #06b6d4); color: #fff; border: none; border-radius: 10px;
+    padding: 12px 16px; font-size: 14px; font-weight: 700; cursor: pointer; width: 100%; transition: transform .15s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.secondary { background: #334155; color: #e2e8f0; }
+  .btn.secondary:hover { background: #475569; }
+  .btn.danger { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+
+  .vazio { color: #64748b; text-align: center; padding: 40px 20px; font-size: 14px; line-height: 1.6; }
+  .vazio .icone { font-size: 40px; display: block; margin-bottom: 12px; opacity: .5; }
+
+  .modo-indicator { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px;
+    background: #0c4a6e; color: #7dd3fc; font-size: 12px; font-weight: 600; }
+  .modo-indicator.aluno { background: #14532d; color: #86efac; }
+  .modo-indicator .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  /* POPUP do mapa */
+  .leaflet-popup-content-wrapper { background: #1e293b; color: #f1f5f9; border-radius: 10px; }
+  .leaflet-popup-tip { background: #1e293b; }
+  .leaflet-popup-content { margin: 14px 18px; font-size: 13px; line-height: 1.5; }
+  .popup-title { font-weight: 700; color: #38bdf8; margin-bottom: 6px; font-size: 14px; }
+  .popup-dica { color: #fbbf24; margin-top: 6px; padding-top: 6px; border-top: 1px solid #334155; }
+
+  /* Cursor especial no modo aluno */
+  body.modo-aluno #mapa { cursor: crosshair; }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: #0f172a; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+  @media (max-width: 900px) { #app { grid-template-columns: 1fr; } .painel { position: absolute; bottom: 0; left: 0; right: 0;
+    max-height: 45vh; border-left: none; border-top: 1px solid #1e293b; } header { right: 0; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div style="position: relative;">
+    <header>
+      <h1>🌊 Gandu Alerta <span class="badge-ods">ODS 13</span></h1>
+      <p>Mapa Comunitário de Risco de Enchentes · Gandu — BA</p>
+    </header>
+    <div id="mapa"></div>
+  </div>
+
+  <aside class="painel">
+    <div>
+      <h2 id="painelTitulo">Visão Geral</h2>
+      <div id="modoIndicator" class="modo-indicator" style="margin-top:12px;">
+        <span class="dot"></span> <span id="modoTexto">Modo Coordenador ativo</span>
+      </div>
+    </div>
+
+    <div class="stats-grid" id="stats"></div>
+
+    <div id="detalhe">
+      <div class="vazio">
+        <span class="icone">📍</span>
+        Clique em um ponto vermelho no mapa<br>para ver os detalhes do local.
+      </div>
+    </div>
+
+    <div style="margin-top:auto; display:flex; flex-direction:column; gap:10px;">
+      <button class="btn" id="btnOficina" onclick="ativarModoOficina()">🎓 Iniciar Modo Oficina</button>
+      <button class="btn secondary" id="btnCoordenador" onclick="ativarModoCoordenador()">📊 Modo Coordenador</button>
+      <button class="btn danger" id="btnLimpar" onclick="limparMarcacoes()" style="display:none;">🗑️ Limpar Marcações dos Alunos</button>
+    </div>
+  </aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+// ===== PONTOS DE RISCO (base comunitária - validar com Defesa Civil) =====
+const pontosRisco = [
+  { id:1, lat:-13.7442, lng:-39.4853, nome:"Rua da Ladeira", risco:"alto",
+    motivo:"Rua em declive acentuado, sem bueiros. A água desce rapidamente e acumula na esquina.",
+    dica:"Não desça esta rua durante chuva forte. Rota alternativa: Rua do Meio." },
+  { id:2, lat:-13.7461, lng:-39.4821, nome:"Ponte do Rio Gandu", risco:"alto",
+    motivo:"O rio sobe rapidamente e transborda. Lixo acumulado no vão da ponte agrava a situação.",
+    dica:"Evite atravessar após 30 min de chuva forte. Busque local alto e seguro." },
+  { id:3, lat:-13.7418, lng:-39.4879, nome:"Praça Central", risco:"medio",
+    motivo:"Calçamento impermeável sem área verde. A água escoa para a rua de baixo.",
+    dica:"Não estacione na praça em dias de chuva. A água sobe rápido." },
+  { id:4, lat:-13.7495, lng:-39.4830, nome:"Bairro Alto", risco:"alto",
+    motivo:"Ocupação em encosta. Risco de deslizamento além de alagamento.",
+    dica:"Observe rachaduras no muro. Se aparecerem, saia de casa e ligue 199." },
+  { id:5, lat:-13.7450, lng:-39.4890, nome:"Mercado Municipal", risco:"medio",
+    motivo:"Acúmulo de lixo e entulho nos bueiros. A água não escoa.",
+    dica:"Não jogue lixo na rua. Bueiro entupido faz a água voltar para dentro das casas." },
+  { id:6, lat:-13.7430, lng:-39.4810, nome:"Rua do Comércio", risco:"baixo",
+    motivo:"Rua plana com boa drenagem, mas calhas entopem com folhas no outono.",
+    dica:"Limpe as calhas da sua casa antes do período chuvoso." }
+];
+
+// ===== MAPA =====
+const map = L.map('mapa', { zoomControl: false }).setView([-13.7450, -39.4850], 15);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// Camada de satélite (Esri) - mais realista
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: '© Esri, Maxar, Earthstar Geographics', maxZoom: 19
+}).addTo(map);
+
+// Camada de ruas sobreposta (Esri Reference)
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 19, opacity: .7
+}).addTo(map);
+
+// ===== MARCADORES DE RISCO =====
+const cores = { alto: '#dc2626', medio: '#f59e0b', baixo: '#22c55e' };
+const marcadores = [];
+
+pontosRisco.forEach(p => {
+  const icone = L.divIcon({
+    className: 'marcador-risco',
+    html: `<div style="width:22px;height:22px;background:${cores[p.risco]};border:3px solid #fff;
+      border-radius:50%;box-shadow:0 0 0 4px ${cores[p.risco]}44, 0 2px 8px rgba(0,0,0,.6);
+      animation: pulsar 2s infinite;"></div>`,
+    iconSize: [22,22], iconAnchor: [11,11]
+  });
+  const m = L.marker([p.lat, p.lng], { icon: icone }).addTo(map);
+  m.bindPopup(`<div class="popup-title">${p.nome}</div>${p.motivo}
+    <div class="popup-dica">💡 ${p.dica}</div>`);
+  m.on('click', () => mostrarDetalhe(p));
+  marcadores.push(m);
+});
+
+// Animação CSS injetada
+const style = document.createElement('style');
+style.textContent = '@keyframes pulsar { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }';
+document.head.appendChild(style);
+
+// ===== PAINEL =====
+let modo = 'coordenador';
+let marcacoesAlunos = [];
+
+function atualizarStats() {
+  const total = pontosRisco.length;
+  const altos = pontosRisco.filter(p => p.risco === 'alto').length;
+  const alunos = marcacoesAlunos.length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat risk"><div class="num">${total}</div><div class="lbl">Pontos mapeados</div></div>
+    <div class="stat risk"><div class="num">${altos}</div><div class="lbl">Risco alto</div></div>
+    <div class="stat safe"><div class="num">${alunos}</div><div class="lbl">Marcações alunos</div></div>
+    <div class="stat"><div class="num">${modo === 'aluno' ? '🎓' : '📊'}</div><div class="lbl">Modo ativo</div></div>
+  `;
+}
+
+function mostrarDetalhe(p) {
+  document.getElementById('painelTitulo').textContent = p.nome;
+  const badge = p.risco === 'alto' ? 'Risco Alto' : p.risco === 'medio' ? 'Risco Médio' : 'Risco Baixo';
+  document.getElementById('detalhe').innerHTML = `
+    <div class="card">
+      <div class="local">${p.nome} <span class="risco ${p.risco}">${badge}</span></div>
+      <div class="motivo">${p.motivo}</div>
+      <div class="dica"><strong>💡 O que fazer:</strong><br>${p.dica}</div>
+      ${modo === 'aluno' ? `<div style="background:#0c4a6e;padding:10px;border-radius:6px;font-size:12px;color:#7dd3fc;margin-top:8px;">
+        ✏️ <strong>Atividade:</strong> Desenhe o trajeto da sua casa até a escola e marque com um X se você passa por aqui.</div>` : ''}
+    </div>`;
+}
+
+function ativarModoOficina() {
+  modo = 'aluno';
+  document.body.classList.add('modo-aluno');
+  document.getElementById('modoTexto').textContent = 'Modo Aluno — clique no mapa para marcar';
+  document.getElementById('modoIndicator').classList.add('aluno');
+  document.getElementById('painelTitulo').textContent = 'Modo Oficina';
+  document.getElementById('btnLimpar').style.display = 'block';
+  document.getElementById('detalhe').innerHTML = `<div class="vazio">
+    <span class="icone">🎓</span>
+    <strong>Modo Oficina ativo!</strong><br><br>
+    Peça aos alunos para clicarem no mapa onde a água acumula perto da casa deles.
+    Cada clique cria uma marcação azul.</div>`;
+  atualizarStats();
+  map.on('click', marcarAluno);
+}
+
+function ativarModoCoordenador() {
+  modo = 'coordenador';
+  document.body.classList.remove('modo-aluno');
+  document.getElementById('modoTexto').textContent = 'Modo Coordenador ativo';
+  document.getElementById('modoIndicator').classList.remove('aluno');
+  document.getElementById('painelTitulo').textContent = 'Visão Geral';
+  document.getElementById('btnLimpar').style.display = 'none';
+  document.getElementById('detalhe').innerHTML = `<div class="vazio">
+    <span class="icone">📍</span>Clique em um ponto vermelho no mapa<br>para ver os detalhes do local.</div>`;
+  atualizarStats();
+  map.off('click', marcarAluno);
+}
+
+function marcarAluno(e) {
+  const icone = L.divIcon({
+    className: 'marcador-aluno',
+    html: `<div style="width:16px;height:16px;background:#3b82f6;border:2px solid #fff;
+      border-radius:50%;box-shadow:0 0 0 3px #3b82f644, 0 1px 4px rgba(0,0,0,.5);"></div>`,
+    iconSize: [16,16], iconAnchor: [8,8]
+  });
+  const m = L.marker(e.latlng, { icon: icone }).addTo(map);
+  m.bindPopup(`<div class="popup-title">✏️ Marcação de aluno</div>
+    Lat: ${e.latlng.lat.toFixed(5)}<br>Lng: ${e.latlng.lng.toFixed(5)}`);
+  marcacoesAlunos.push(m);
+  atualizarStats();
+}
+
+function limparMarcacoes() {
+  marcacoesAlunos.forEach(m => map.removeLayer(m));
+  marcacoesAlunos = [];
+  atualizarStats();
+}
+
+// Inicialização
+atualizarStats();
+
+// Ajustar mapa ao tamanho da janela
+window.addEventListener('resize', () => map.invalidateSize());
+setTimeout(() => map.invalidateSize(), 100);
+</script>
+</body>
+</html>
